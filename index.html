@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poker Online Firebase (Single File)</title>
+    <style>
+        /* --- CSS STYLES --- */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #202020;
+            color: white;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+
+        /* Màn hình đăng nhập */
+        #login-screen {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+        }
+
+        input { padding: 10px; border-radius: 5px; border: none; margin-bottom: 10px; width: 200px; }
+        
+        button {
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            background: #f1c40f;
+            color: #333;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        button:hover { background: #f39c12; }
+        button:disabled { background: #95a5a6; cursor: not-allowed; }
+
+        /* Màn hình game */
+        #game-screen { display: none; padding: 20px; text-align: center; }
+
+        .poker-table {
+            background-color: #27ae60;
+            border: 15px solid #5d4037;
+            border-radius: 200px;
+            width: 80%;
+            height: 400px;
+            margin: 20px auto;
+            position: relative;
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .community-cards {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            min-height: 90px;
+        }
+
+        .pot-area {
+            background: rgba(0,0,0,0.3);
+            padding: 5px 20px;
+            border-radius: 20px;
+            font-size: 1.2em;
+            color: #f1c40f;
+            font-weight: bold;
+        }
+
+        /* Thẻ bài */
+        .card {
+            width: 50px;
+            height: 75px;
+            background: white;
+            color: black;
+            border-radius: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 18px;
+            font-weight: bold;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+            user-select: none;
+        }
+        .card.red { color: #c0392b; }
+        .card.black { color: #2c3e50; }
+
+        /* Vị trí người chơi */
+        .players-area {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            margin-top: -50px;
+        }
+
+        .player {
+            background: #34495e;
+            padding: 10px;
+            border-radius: 10px;
+            width: 120px;
+            text-align: center;
+            position: relative;
+            margin: 10px;
+            border: 2px solid transparent;
+        }
+
+        .player.active { border-color: #f1c40f; box-shadow: 0 0 10px #f1c40f; }
+        .player.folded { opacity: 0.5; }
+
+        .player-cards {
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        
+        .player-cards .card { width: 30px; height: 45px; font-size: 12px; }
+
+        /* Bảng điều khiển của tôi */
+        .my-controls {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: #2c3e50;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            box-shadow: 0 -5px 10px rgba(0,0,0,0.3);
+        }
+
+        .my-hand { display: flex; gap: 10px; margin-bottom: 10px; }
+        .my-hand .card { width: 60px; height: 90px; font-size: 24px; border: 2px solid gold; }
+
+        .action-buttons { display: flex; gap: 10px; }
+        
+        .hidden { display: none !important; }
+        .status-log { position: absolute; top: 10px; right: 10px; font-size: 0.8em; color: #bbb; }
+    </style>
+</head>
+<body>
+
+    <div id="login-screen">
+        <h1>♠️ Poker  ♥️</h1>
+        <button onclick="startGame()">Vào Phòng Ngay</button>
+        <p id="login-status" style="margin-top: 10px; color: yellow;"></p>
+    </div>
+
+    <div id="game-screen">
+        <div class="status-log">Room ID: <span id="room-id-display">...</span></div>
+        
+        <div class="poker-table">
+            <div class="pot-area">Pot: $<span id="pot-amount">0</span></div>
+            <div style="margin: 10px; font-size: 0.9em; color: #ddd;">Community Cards</div>
+            <div id="community-cards" class="community-cards">
+                </div>
+            <div id="game-status-text" style="color: #fff; margin-top: 5px;">Chờ người chơi...</div>
+        </div>
+
+        <div id="players-container" class="players-area">
+            </div>
+
+        <div class="my-controls">
+            <div id="my-hand" class="my-hand">
+                </div>
+            <div class="action-buttons">
+                <button onclick="handleAction('fold')" class="btn-action">Úp bài (Fold)</button>
+                <button onclick="handleAction('check')" class="btn-action">Xem (Check)</button>
+                <button onclick="handleAction('bet')" class="btn-action">Cược $100</button>
+                <button onclick="adminDeal()" id="btn-admin-deal" style="background-color: #e74c3c;" class="hidden">Chia Bài (Admin)</button>
+            </div>
+            <div style="margin-top:10px">
+                Bạn: <b><span id="my-name">...</span></b> | Chips: <b><span id="my-chips">0</span>$</b>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+
+    <script>
+        // ==========================================
+        // 1. CẤU HÌNH (QUAN TRỌNG NHẤT)
+        // ==========================================
+        
+        // --- THAY CẤU HÌNH FIREBASE CỦA BẠN VÀO ĐÂY ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDp1NhIma2q2Bcc14iMfmv8HjH7uxBJvzw",
+            authDomain: "pokerwebgame-b3573.firebaseapp.com",
+            projectId: "pokerwebgame-b3573",
+            storageBucket: "pokerwebgame-b3573.firebasestorage.app",
+            messagingSenderId: "361134921092",
+            appId: "1:361134921092:web:2bb156ef2e169e023739d1"
+          };
+        // ------------------------------------------------
+
+        // Khởi tạo Firebase
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        // Biến Global
+        const ROOM_ID = "poker_room_global_1"; // Dùng chung 1 phòng cho demo
+        let myData = null; // Thông tin bản thân (id, name)
+        let unsubscribe = null; // Để ngắt kết nối khi cần
+
+        // ==========================================
+        // 2. LOGIC KẾT NỐI & VÀO PHÒNG
+        // ==========================================
+
+        // Hàm đăng nhập mới sử dụng Google
+        async function startGame() {
+            const statusText = document.getElementById('login-status');
+            statusText.innerText = "Đang mở cửa sổ đăng nhập Google...";
+        
+            try {
+                // Sử dụng Google Provider
+                const provider = new firebase.auth.GoogleAuthProvider();
+                
+                // Hiện popup đăng nhập
+                const result = await auth.signInWithPopup(provider);
+                const user = result.user;
+        
+                // Tạo dữ liệu người chơi từ thông tin Google
+                myData = {
+                    id: user.uid,
+                    name: user.displayName, // Lấy tên thật từ Google
+                    chips: 1000, 
+                    hand: [],
+                    isFolded: false,
+                    isHost: false,
+                    avatar: user.photoURL // (Tuỳ chọn) Lấy ảnh đại diện
+                };
+        
+                // Gọi hàm tham gia phòng như cũ
+                await joinRoomTransaction(myData);
+        
+                // Chuyển màn hình
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('game-screen').style.display = 'block';
+                document.getElementById('room-id-display').innerText = ROOM_ID;
+                document.getElementById('my-name').innerText = myData.name;
+                document.getElementById('my-chips').innerText = myData.chips;
+        
+                // Bắt đầu lắng nghe
+                listenToRoom();
+        
+            } catch (error) {
+                console.error(error);
+                statusText.innerText = "Lỗi đăng nhập: " + error.message;
+            }
+        }
+
+        async function joinRoomTransaction(player) {
+            const roomRef = db.collection('rooms').doc(ROOM_ID);
+
+            await db.runTransaction(async (transaction) => {
+                const doc = await transaction.get(roomRef);
+                
+                if (!doc.exists) {
+                    // Tạo phòng mới nếu chưa có
+                    player.isHost = true; // Người tạo là chủ phòng
+                    transaction.set(roomRef, {
+                        players: [player],
+                        pot: 0,
+                        communityCards: [],
+                        gameState: 'waiting', // waiting, preflop, flop, turn, river, showdown
+                        deck: [], 
+                        turnIndex: 0
+                    });
+                } else {
+                    // Phòng đã có, thêm người vào
+                    const data = doc.data();
+                    let players = data.players || [];
+                    
+                    // Kiểm tra xem đã có trong phòng chưa
+                    const existingIdx = players.findIndex(p => p.id === player.id);
+                    if (existingIdx === -1) {
+                        players.push(player);
+                        transaction.update(roomRef, { players: players });
+                    }
+                }
+            });
+        }
+
+        // ==========================================
+        // 3. LẮNG NGHE DỮ LIỆU (REALTIME)
+        // ==========================================
+
+        function listenToRoom() {
+            unsubscribe = db.collection('rooms').doc(ROOM_ID)
+                .onSnapshot((doc) => {
+                    if (doc.exists) {
+                        renderGame(doc.data());
+                    }
+                });
+        }
+
+        // ==========================================
+        // 4. RENDER GIAO DIỆN
+        // ==========================================
+
+        function renderGame(data) {
+            // Cập nhật Pot
+            document.getElementById('pot-amount').innerText = data.pot;
+            document.getElementById('game-status-text').innerText = `Trạng thái: ${data.gameState.toUpperCase()}`;
+
+            // Render Bài chung
+            const commDiv = document.getElementById('community-cards');
+            commDiv.innerHTML = data.communityCards.map(c => createCardHTML(c)).join('');
+
+            // Render Người chơi khác & Bản thân
+            const playersDiv = document.getElementById('players-container');
+            const myHandDiv = document.getElementById('my-hand');
+            
+            playersDiv.innerHTML = ''; 
+            myHandDiv.innerHTML = '';
+
+            // Nút Admin chỉ hiện cho người tạo phòng (người đầu tiên trong mảng)
+            const isMeHost = (data.players.length > 0 && data.players[0].id === myData.id);
+            if (isMeHost) {
+                document.getElementById('btn-admin-deal').classList.remove('hidden');
+                document.getElementById('btn-admin-deal').innerText = 
+                    data.gameState === 'waiting' || data.gameState === 'showdown' ? "CHIA VÁN MỚI" : "ĐANG CHƠI...";
+            }
+
+            data.players.forEach((p, index) => {
+                const isTurn = (index === data.turnIndex && data.gameState !== 'waiting' && data.gameState !== 'showdown');
+                
+                if (p.id === myData.id) {
+                    // Update chỉ số của mình
+                    document.getElementById('my-chips').innerText = p.chips;
+                    
+                    // Render bài của mình
+                    if(p.hand && p.hand.length > 0 && !p.isFolded) {
+                        myHandDiv.innerHTML = p.hand.map(c => createCardHTML(c, true)).join('');
+                    } else if (p.isFolded) {
+                        myHandDiv.innerHTML = "<div style='color:grey'>Đã úp bài</div>";
+                    }
+
+                    // Highlight nếu đến lượt mình
+                    if (isTurn) {
+                        document.querySelector('.my-controls').style.background = "#2c3e50"; // Reset
+                        document.querySelector('.my-controls').style.borderTop = "5px solid yellow";
+                    } else {
+                        document.querySelector('.my-controls').style.borderTop = "none";
+                    }
+
+                } else {
+                    // Render đối thủ
+                    let cardHtml = '';
+                    if (p.hand && p.hand.length > 0) {
+                        // Nếu đang chơi thì úp bài đối thủ, nếu showdown thì lật
+                        if (data.gameState === 'showdown') {
+                             cardHtml = p.hand.map(c => createCardHTML(c, false)).join('');
+                        } else {
+                             cardHtml = `<div class="card" style="background:navy; color:navy">?</div>
+                                         <div class="card" style="background:navy; color:navy">?</div>`;
+                        }
+                    }
+
+                    playersDiv.innerHTML += `
+                        <div class="player ${isTurn ? 'active' : ''} ${p.isFolded ? 'folded' : ''}">
+                            <div style="font-weight:bold; color: #ecf0f1">${p.name}</div>
+                            <div style="color: #f39c12">$${p.chips}</div>
+                            <div class="player-cards">${!p.isFolded ? cardHtml : 'Đã úp'}</div>
+                        </div>
+                    `;
+                }
+            });
+        }
+
+        // Helper: Tạo HTML lá bài
+        function createCardHTML(cardString, isBig = false) {
+            // cardString ví dụ: "A♥", "10♣"
+            const suit = cardString.slice(-1); // Lấy ký tự cuối
+            const value = cardString.slice(0, -1);
+            const colorClass = (suit === '♥' || suit === '♦') ? 'red' : 'black';
+            const sizeStyle = isBig ? '' : ''; // Style xử lý ở CSS
+            
+            return `<div class="card ${colorClass}" ${sizeStyle}>${value}<span style="font-size:1.2em">${suit}</span></div>`;
+        }
+
+        // ==========================================
+        // 5. HÀNH ĐỘNG GAME (LOGIC)
+        // ==========================================
+
+        // -- ADMIN: CHIA BÀI --
+        async function adminDeal() {
+            const roomRef = db.collection('rooms').doc(ROOM_ID);
+            
+            // Tạo bộ bài
+            const suits = ['♠', '♥', '♦', '♣'];
+            const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+            let deck = [];
+            for (let s of suits) for (let v of values) deck.push(v + s);
+            deck.sort(() => Math.random() - 0.5); // Xáo bài
+
+            await db.runTransaction(async (t) => {
+                const doc = await t.get(roomRef);
+                const data = doc.data();
+                let players = data.players;
+
+                // Reset trạng thái người chơi
+                players = players.map(p => {
+                    // Mỗi người 2 lá
+                    p.hand = [deck.pop(), deck.pop()];
+                    p.isFolded = false;
+                    return p;
+                });
+
+                t.update(roomRef, {
+                    deck: deck, // Lưu bài thừa để chia Flop/Turn/River
+                    players: players,
+                    communityCards: [],
+                    pot: 0,
+                    gameState: 'betting',
+                    turnIndex: 0 // Người đầu tiên đi trước
+                });
+            });
+        }
+
+        // -- NGƯỜI CHƠI: BET / FOLD / CHECK --
+        async function handleAction(action) {
+            const roomRef = db.collection('rooms').doc(ROOM_ID);
+            const amount = 100; // Hardcode mức cược demo
+
+            await db.runTransaction(async (t) => {
+                const doc = await t.get(roomRef);
+                const data = doc.data();
+                
+                // Kiểm tra đúng lượt không
+                if (data.players[data.turnIndex].id !== myData.id) {
+                    alert("Chưa đến lượt của bạn!");
+                    return;
+                }
+
+                let players = data.players;
+                let pot = data.pot;
+                let deck = data.deck;
+                let community = data.communityCards;
+                let gameState = data.gameState;
+
+                // Xử lý hành động
+                if (action === 'fold') {
+                    players[data.turnIndex].isFolded = true;
+                } else if (action === 'bet') {
+                    if (players[data.turnIndex].chips >= amount) {
+                        players[data.turnIndex].chips -= amount;
+                        pot += amount;
+                    }
+                }
+                // Check: Không làm gì cả, chỉ qua lượt
+
+                // Chuyển lượt
+                let nextTurn = (data.turnIndex + 1) % players.length;
+
+                // Logic đơn giản: Nếu hết 1 vòng (quay lại người 0) thì chia thêm bài chung
+                // (Đây là logic rút gọn, thực tế phức tạp hơn nhiều)
+                if (nextTurn === 0) {
+                    if (community.length === 0) {
+                        // Flop (3 lá)
+                        community.push(deck.pop(), deck.pop(), deck.pop());
+                    } else if (community.length === 3 || community.length === 4) {
+                        // Turn & River (1 lá)
+                        community.push(deck.pop());
+                    } else if (community.length === 5) {
+                        gameState = 'showdown'; // Lật bài
+                    }
+                }
+
+                t.update(roomRef, {
+                    players: players,
+                    pot: pot,
+                    turnIndex: nextTurn,
+                    communityCards: community,
+                    deck: deck,
+                    gameState: gameState
+                });
+            });
+        }
+
+    </script>
+</body>
+</html>
